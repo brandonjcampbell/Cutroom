@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CUTROOM · transcript-bound video editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0c0c0e;
+    --panel:#151518;
+    --panel-2:#1c1c21;
+    --line:#2a2a31;
+    --ink:#f2efe9;
+    --muted:#8b8b94;
+    --amber:#ff7a18;
+    --amber-soft:#ffb066;
+    --keep:#3ad98a;
+    --cut:#ff4d57;
+    --film:#e7c9a0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Bricolage Grotesque",system-ui,sans-serif;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(255,122,24,.10), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(58,217,138,.06), transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    min-height:100%;
+    padding:28px 22px 60px;
+    position:relative;
+  }
+  /* film grain */
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;opacity:.04;z-index:999;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:24px}
+  .brand h1{
+    font-weight:800;font-size:clamp(30px,5vw,52px);letter-spacing:-.03em;line-height:.92;
+    display:flex;align-items:center;gap:.35em;
+  }
+  .brand h1 .dot{width:.32em;height:.32em;border-radius:50%;background:var(--amber);box-shadow:0 0 22px var(--amber);animation:pulse 2.4s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35;transform:scale(.82)}}
+  .brand p{margin-top:8px;color:var(--muted);font-family:"JetBrains Mono",monospace;font-size:12.5px;letter-spacing:.02em;max-width:46ch}
+  .clock{
+    font-family:"JetBrains Mono",monospace;text-align:right;
+  }
+  .clock .tc{font-size:30px;font-weight:700;letter-spacing:.04em}
+  .clock .lab{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.22em}
+  .rec-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#444;margin-right:7px;vertical-align:middle}
+  .rec-dot.on{background:var(--cut);box-shadow:0 0 12px var(--cut);animation:blink 1s steps(2,start) infinite}
+  @keyframes blink{50%{opacity:.25}}
+
+  .grid{display:grid;grid-template-columns:1.15fr .85fr;gap:18px}
+  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+  .panel{background:linear-gradient(180deg,var(--panel),#101013);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .panel .head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line)}
+  .panel .head h2{font-size:12px;text-transform:uppercase;letter-spacing:.26em;color:var(--film);font-weight:600;font-family:"JetBrains Mono",monospace}
+  .panel .body{padding:16px}
+
+  .stage{position:relative;background:#000;aspect-ratio:16/9;border-bottom:1px solid var(--line)}
+  video{width:100%;height:100%;object-fit:cover;display:block;background:#000}
+  .stage .badge{position:absolute;top:12px;left:12px;font-family:"JetBrains Mono",monospace;font-size:11px;
+    background:rgba(0,0,0,.55);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.12);
+    padding:5px 9px;border-radius:8px;letter-spacing:.08em}
+  .stage .interim{position:absolute;bottom:0;left:0;right:0;padding:18px 16px 14px;
+    background:linear-gradient(transparent,rgba(0,0,0,.78));font-size:17px;color:#fff;min-height:30px;
+    text-shadow:0 1px 8px #000;font-style:italic}
+  .stage .interim b{font-style:normal;color:var(--amber-soft)}
+
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  button{
+    font-family:"JetBrains Mono",monospace;font-size:12.5px;font-weight:600;letter-spacing:.04em;
+    color:var(--ink);background:var(--panel-2);border:1px solid var(--line);
+    padding:11px 15px;border-radius:10px;cursor:pointer;transition:.16s;display:inline-flex;align-items:center;gap:8px;
+  }
+  button:hover:not(:disabled){border-color:#3c3c46;transform:translateY(-1px)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.primary{background:var(--amber);border-color:var(--amber);color:#1a0c00}
+  button.primary:hover:not(:disabled){box-shadow:0 6px 22px rgba(255,122,24,.35)}
+  button.danger{color:var(--cut);border-color:#43242a}
+  button.ghost{background:transparent}
+  .ic{width:9px;height:9px;border-radius:2px;background:currentColor;display:inline-block}
+  .ic.circle{border-radius:50%}
+
+  /* timeline */
+  .tl-wrap{margin-top:16px}
+  .tl-meta{display:flex;justify-content:space-between;font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--muted);margin-bottom:6px}
+  .timeline{position:relative;height:46px;background:repeating-linear-gradient(90deg,#0a0a0c,#0a0a0c 1px,transparent 1px,transparent 28px),#141417;
+    border:1px solid var(--line);border-radius:9px;overflow:hidden;cursor:pointer}
+  .tl-seg{position:absolute;top:6px;bottom:6px;border-radius:4px;border:1px solid rgba(0,0,0,.3)}
+  .tl-seg.keep{background:linear-gradient(180deg,rgba(58,217,138,.55),rgba(58,217,138,.25))}
+  .tl-seg.cut{background:repeating-linear-gradient(45deg,rgba(255,77,87,.5),rgba(255,77,87,.5) 5px,rgba(255,77,87,.2) 5px,rgba(255,77,87,.2) 10px)}
+  .playhead{position:absolute;top:0;bottom:0;width:2px;background:var(--amber);box-shadow:0 0 10px var(--amber);pointer-events:none;left:0}
+
+  /* transcript */
+  .seg-list{display:flex;flex-direction:column;gap:8px;max-height:520px;overflow:auto;padding-right:4px}
+  .seg-list::-webkit-scrollbar{width:8px}
+  .seg-list::-webkit-scrollbar-thumb{background:#2c2c33;border-radius:8px}
+  .seg{display:flex;gap:12px;align-items:flex-start;padding:11px 12px;border:1px solid var(--line);
+    border-radius:11px;background:var(--panel-2);transition:.15s;cursor:pointer}
+  .seg:hover{border-color:#3a3a44}
+  .seg.active{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber) inset}
+  .seg.deleted{opacity:.5}
+  .seg.deleted .txt{text-decoration:line-through;text-decoration-color:var(--cut);color:var(--muted)}
+  .seg .tc{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--amber-soft);white-space:nowrap;padding-top:2px;min-width:108px}
+  .seg .tc .dur{display:block;color:var(--muted);font-size:10px;margin-top:2px}
+  .seg .txt{flex:1;font-size:15.5px;line-height:1.45;outline:none}
+  .seg .txt[contenteditable]:focus{color:#fff}
+  .seg .x{flex:0 0 auto;background:transparent;border:none;color:var(--muted);font-size:16px;padding:2px 6px;border-radius:7px}
+  .seg .x:hover{color:var(--cut);background:rgba(255,77,87,.1);transform:none}
+  .empty{color:var(--muted);font-family:"JetBrains Mono",monospace;font-size:12.5px;text-align:center;padding:40px 12px;line-height:1.7}
+
+  .summary{display:flex;gap:20px;flex-wrap:wrap;font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--muted);margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)}
+  .summary b{color:var(--ink);font-weight:700}
+  .summary .k{color:var(--keep)} .summary .c{color:var(--cut)}
+
+  .lang-sel{font-family:"JetBrains Mono",monospace;font-size:11px;background:var(--panel-2);color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+  .status{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--muted);margin-top:12px;min-height:16px}
+  .status.warn{color:var(--amber-soft)}
+  .status.err{color:var(--cut)}
+  .hint{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6}
+  .hint kbd{background:var(--panel-2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--film)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>CUT<span class="dot"></span>ROOM</h1>
+      <p>Record from your camera, get a live transcript, and cut footage by deleting words. Every line of text is welded to its slice of video — delete the line, lose the slice.</p>
+    </div>
+    <div class="clock">
+      <div class="tc" id="clock">00:00.0</div>
+      <div class="lab"><span class="rec-dot" id="recDot"></span><span id="recState">idle</span></div>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT: camera + timeline -->
+    <section class="panel">
+      <div class="head">
+        <h2>Camera</h2>
+        <select class="lang-sel" id="lang" title="Transcription language">
+          <option value="en-US">en-US</option>
+          <option value="en-GB">en-GB</option>
+          <option value="es-ES">es-ES</option>
+          <option value="fr-FR">fr-FR</option>
+          <option value="de-DE">de-DE</option>
+          <option value="it-IT">it-IT</option>
+          <option value="pt-BR">pt-BR</option>
+          <option value="hi-IN">hi-IN</option>
+          <option value="ja-JP">ja-JP</option>
+          <option value="zh-CN">zh-CN</option>
+        </select>
+      </div>
+      <div class="stage">
+        <video id="preview" autoplay muted playsinline></video>
+        <video id="playback" playsinline style="display:none"></video>
+        <div class="badge" id="modeBadge">LIVE PREVIEW</div>
+        <div class="interim" id="interim"></div>
+      </div>
+      <div class="body">
+        <div class="controls">
+          <button class="primary" id="btnRec"><span class="ic circle"></span> Record</button>
+          <button id="btnStop" disabled><span class="ic"></span> Stop</button>
+          <button id="btnPlay" disabled>▶ Play edit</button>
+          <button class="ghost" id="btnExport" disabled>⬇ Export cut</button>
+          <button class="ghost" id="btnRaw" disabled>⬇ Raw</button>
+        </div>
+
+        <div class="tl-wrap">
+          <div class="tl-meta"><span>TIMELINE</span><span id="tlDur">0.0s</span></div>
+          <div class="timeline" id="timeline"><div class="playhead" id="playhead"></div></div>
+          <div class="summary" id="summary"></div>
+        </div>
+        <div class="status" id="status"></div>
+      </div>
+    </section>
+
+    <!-- RIGHT: transcript -->
+    <section class="panel">
+      <div class="head">
+        <h2>Transcript ↔ Footage</h2>
+        <button class="danger ghost" id="btnClearCuts" style="padding:7px 10px">restore all</button>
+      </div>
+      <div class="body">
+        <div class="seg-list" id="segList">
+          <div class="empty" id="emptyMsg">No transcript yet.<br>Hit <b style="color:var(--amber)">Record</b> and start talking.<br><br>Each phrase becomes a clip you can delete.</div>
+        </div>
+        <div class="hint">
+          Click a line to <b>jump</b> the playhead. Click <kbd>×</kbd> to <b>cut</b> that footage. Double-click text to fix wording (timing stays bound).
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- element refs ----------
+  const $ = id => document.getElementById(id);
+  const preview=$('preview'), playback=$('playback'), interimEl=$('interim');
+  const btnRec=$('btnRec'), btnStop=$('btnStop'), btnPlay=$('btnPlay'),
+        btnExport=$('btnExport'), btnRaw=$('btnRaw'), btnClearCuts=$('btnClearCuts');
+  const clockEl=$('clock'), recDot=$('recDot'), recState=$('recState'),
+        modeBadge=$('modeBadge'), statusEl=$('status'), langSel=$('lang');
+  const segListEl=$('segList'), emptyMsg=$('emptyMsg'),
+        timelineEl=$('timeline'), playheadEl=$('playhead'),
+        tlDurEl=$('tlDur'), summaryEl=$('summary');
+
+  // ---------- state ----------
+  let stream=null, recorder=null, chunks=[], blob=null, url=null;
+  let recognition=null, recognizing=false, recording=false;
+  let recStart=0, clockTimer=null, durationMs=0;
+  let segments=[];              // {id, text, start, end(ms), deleted}
+  let pendingStart=null, lastEnd=0, lastFinalIndex=0;
+  let activeSegId=null;
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  // ---------- helpers ----------
+  const now = () => performance.now();
+  const elapsed = () => recording ? now()-recStart : durationMs;
+  function fmt(ms){
+    const s=Math.max(0,ms)/1000, m=Math.floor(s/60), r=s-m*60;
+    return String(m).padStart(2,'0')+':'+r.toFixed(1).padStart(4,'0');
+  }
+  function setStatus(msg,cls=''){ statusEl.textContent=msg; statusEl.className='status '+cls; }
+
+  // ---------- recording ----------
+  async function startRecording(){
+    if(!navigator.mediaDevices?.getUserMedia){
+      setStatus('getUserMedia is not available in this context. Open this file directly in Chrome/Edge.','err'); return;
+    }
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({
+        video:{width:{ideal:1280},height:{ideal:720}}, audio:true
+      });
+    }catch(e){
+      setStatus('Camera/mic blocked: '+e.message+' — allow permissions and reload.','err'); return;
+    }
+    // reset takes
+    segments=[]; pendingStart=null; lastEnd=0; durationMs=0; activeSegId=null;
+    if(url){URL.revokeObjectURL(url); url=null;} blob=null;
+    renderSegments(); renderTimeline();
+
+    preview.style.display='block'; playback.style.display='none';
+    preview.srcObject=stream; preview.muted=true; await preview.play().catch(()=>{});
+    modeBadge.textContent='LIVE PREVIEW';
+
+    chunks=[];
+    const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']
+      .find(t=>MediaRecorder.isTypeSupported(t))||'';
+    recorder=new MediaRecorder(stream, mime?{mimeType:mime}:undefined);
+    recorder.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
+    recorder.onstop=finalizeRecording;
+    recorder.start(250);
+
+    recording=true; recStart=now();
+    recDot.classList.add('on'); recState.textContent='recording';
+    btnRec.disabled=true; btnStop.disabled=false;
+    btnPlay.disabled=true; btnExport.disabled=true; btnRaw.disabled=true;
+    clockTimer=setInterval(()=>{ clockEl.textContent=fmt(elapsed()); }, 80);
+
+    startRecognition();
+    setStatus(recognition?'Listening… speak naturally.':'Recording. Live transcript unavailable in this browser (use Chrome/Edge).', recognition?'':'warn');
+  }
+
+  function stopRecording(){
+    if(!recording) return;
+    recording=false;
+    try{ recorder.stop(); }catch(e){}
+    stopRecognition();
+    clearInterval(clockTimer);
+    durationMs=now()-recStart;
+    stream.getTracks().forEach(t=>t.stop());
+    recDot.classList.remove('on'); recState.textContent='stopped';
+    btnRec.disabled=false; btnStop.disabled=true;
+    // close any open phrase
+    if(pendingStart!==null){ commitSegment('', pendingStart, durationMs, true); pendingStart=null; }
+    interimEl.innerHTML='';
+  }
+
+  function finalizeRecording(){
+    blob=new Blob(chunks,{type:chunks[0]?.type||'video/webm'});
+    url=URL.createObjectURL(blob);
+    preview.style.display='none'; playback.style.display='block';
+    playback.src=url; playback.muted=false; modeBadge.textContent='PLAYBACK · cuts honored';
+    btnPlay.disabled=false; btnRaw.disabled=false;
+    btnExport.disabled = !(window.AudioContext||window.webkitAudioContext);
+    renderTimeline();
+    setStatus('Take ready ('+fmt(durationMs)+'). Delete lines to cut, then play or export.');
+  }
+
+  // ---------- speech recognition ----------
+  function startRecognition(){
+    if(!SR) return;
+    recognition=new SR();
+    recognition.continuous=true;
+    recognition.interimResults=true;
+    recognition.lang=langSel.value;
+    lastFinalIndex=0;
+    recognition.onresult=onResult;
+    recognition.onerror=e=>{ if(e.error==='no-speech'||e.error==='aborted') return;
+      setStatus('Speech: '+e.error,'warn'); };
+    recognition.onend=()=>{ // browser auto-stops; resume while recording
+      recognizing=false;
+      if(recording){ try{ recognition.start(); recognizing=true; lastFinalIndex=0; }catch(e){} }
+    };
+    try{ recognition.start(); recognizing=true; }catch(e){}
+  }
+  function stopRecognition(){
+    if(recognition){ try{ recognition.onend=null; recognition.stop(); }catch(e){} }
+    recognizing=false;
+  }
+
+  function onResult(ev){
+    let interim='';
+    for(let i=lastFinalIndex;i<ev.results.length;i++){
+      const r=ev.results[i];
+      if(pendingStart===null) pendingStart=Math.max(lastEnd, elapsed()-300); // mark phrase start
+      if(r.isFinal){
+        const text=r[0].transcript.trim();
+        const end=elapsed();
+        if(text) commitSegment(text, pendingStart, end);
+        lastEnd=end; pendingStart=null; lastFinalIndex=i+1;
+      }else{
+        interim+=r[0].transcript;
+      }
+    }
+    interimEl.innerHTML = interim ? '<b>▍</b> '+interim : '';
+  }
+
+  function commitSegment(text,start,end,silent){
+    if(silent) return; // ignore empty trailing phrase
+    segments.push({id:'s'+Date.now()+Math.random().toString(36).slice(2,6),
+      text, start:Math.max(0,start), end:Math.max(start+200,end), deleted:false});
+    durationMs=Math.max(durationMs,end);
+    renderSegments(); renderTimeline();
+  }
+
+  // ---------- rendering ----------
+  function renderSegments(){
+    emptyMsg.style.display = segments.length? 'none':'block';
+    // remove old seg nodes (keep emptyMsg)
+    [...segListEl.querySelectorAll('.seg')].forEach(n=>n.remove());
+    segments.forEach(seg=>{
+      const row=document.createElement('div');
+      row.className='seg'+(seg.deleted?' deleted':'')+(seg.id===activeSegId?' active':'');
+      row.dataset.id=seg.id;
+      row.innerHTML=`
+        <div class="tc">${fmt(seg.start)}–${fmt(seg.end)}<span class="dur">${((seg.end-seg.start)/1000).toFixed(1)}s</span></div>
+        <div class="txt" >${escapeHtml(seg.text)}</div>
+        <button class="x" title="${seg.deleted?'restore clip':'cut this footage'}">${seg.deleted?'↺':'×'}</button>`;
+      const txt=row.querySelector('.txt');
+      // jump on click
+      row.addEventListener('click',e=>{
+        if(e.target.classList.contains('x')||e.target===txt&&txt.isContentEditable) return;
+        jumpTo(seg.start);
+      });
+      // edit text on dblclick — timing stays bound
+      txt.addEventListener('dblclick',()=>{ txt.contentEditable='true'; txt.focus(); });
+      txt.addEventListener('blur',()=>{ txt.contentEditable='false'; seg.text=txt.textContent.trim(); });
+      txt.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();txt.blur();} });
+      // delete / restore
+      row.querySelector('.x').addEventListener('click',e=>{
+        e.stopPropagation(); seg.deleted=!seg.deleted; renderSegments(); renderTimeline();
+      });
+      segListEl.appendChild(row);
+    });
+    renderSummary();
+  }
+
+  function renderTimeline(){
+    [...timelineEl.querySelectorAll('.tl-seg')].forEach(n=>n.remove());
+    const total=durationMs||1;
+    tlDurEl.textContent=(total/1000).toFixed(1)+'s';
+    segments.forEach(seg=>{
+      const d=document.createElement('div');
+      d.className='tl-seg '+(seg.deleted?'cut':'keep');
+      d.style.left=(seg.start/total*100)+'%';
+      d.style.width=Math.max(0.6,(seg.end-seg.start)/total*100)+'%';
+      d.title=(seg.deleted?'CUT · ':'KEEP · ')+seg.text;
+      d.addEventListener('click',ev=>{ev.stopPropagation(); jumpTo(seg.start);});
+      timelineEl.appendChild(d);
+    });
+  }
+
+  function renderSummary(){
+    const kept=segments.filter(s=>!s.deleted), cut=segments.filter(s=>s.deleted);
+    const keptMs=kept.reduce((a,s)=>a+(s.end-s.start),0);
+    const cutMs=cut.reduce((a,s)=>a+(s.end-s.start),0);
+    summaryEl.innerHTML=
+      `<span><b>${segments.length}</b> clips</span>`+
+      `<span class="k"><b>${kept.length}</b> kept · ${(keptMs/1000).toFixed(1)}s</span>`+
+      `<span class="c"><b>${cut.length}</b> cut · ${(cutMs/1000).toFixed(1)}s</span>`;
+  }
+
+  function escapeHtml(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+  // ---------- playback honoring cuts ----------
+  function keptRangesSec(){
+    return segments.filter(s=>!s.deleted)
+      .map(s=>[s.start/1000,s.end/1000]).sort((a,b)=>a[0]-b[0]);
+  }
+  function cutRangesSec(){
+    return segments.filter(s=>s.deleted)
+      .map(s=>[s.start/1000,s.end/1000]).sort((a,b)=>a[0]-b[0]);
+  }
+  function jumpTo(ms){
+    if(playback.style.display==='none') return;
+    activeSegId=null;
+    playback.currentTime=ms/1000; playback.pause();
+    updatePlayhead();
+  }
+  btnPlay.addEventListener('click',()=>{ playback.currentTime=0; playback.play(); });
+  playback.addEventListener('timeupdate',()=>{
+    const t=playback.currentTime;
+    const cuts=cutRangesSec();
+    for(const [s,e] of cuts){
+      if(t>=s-0.02 && t<e-0.05){ playback.currentTime=e; break; }
+    }
+    updatePlayhead();
+  });
+  function updatePlayhead(){
+    const total=(durationMs||1)/1000;
+    const t=playback.currentTime;
+    playheadEl.style.left=(t/total*100)+'%';
+    // highlight active segment
+    const cur=segments.find(s=>!s.deleted && t>=s.start/1000-0.05 && t<s.end/1000);
+    const id=cur?cur.id:null;
+    if(id!==activeSegId){ activeSegId=id; renderSegments();
+      const node=segListEl.querySelector('.seg.active'); if(node) node.scrollIntoView({block:'nearest'});
+    }
+  }
+  timelineEl.addEventListener('click',e=>{
+    if(playback.style.display==='none') return;
+    const rect=timelineEl.getBoundingClientRect();
+    const frac=(e.clientX-rect.left)/rect.width;
+    playback.currentTime=frac*(durationMs/1000);
+  });
+
+  // ---------- exports ----------
+  btnRaw.addEventListener('click',()=>{ if(blob) download(blob,'cutroom-raw.webm'); });
+
+  function download(b,name){
+    const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  }
+
+  // Re-render only kept ranges into a new trimmed WebM via canvas + WebAudio.
+  btnExport.addEventListener('click',exportCut);
+  let exporting=false;
+  async function exportCut(){
+    if(exporting||!url) return;
+    const keep=keptRangesSec();
+    if(!keep.length){ setStatus('Nothing left to export — every clip is cut.','warn'); return; }
+    exporting=true; btnExport.disabled=true;
+    setStatus('Rendering edited video… keep this tab focused.','warn');
+    try{
+      const v=document.createElement('video');
+      v.src=url; v.muted=false; v.playsInline=true;
+      await new Promise(r=>{ v.onloadedmetadata=r; });
+      const w=v.videoWidth||1280, h=v.videoHeight||720;
+      const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
+      const ctx=canvas.getContext('2d');
+
+      const AC=window.AudioContext||window.webkitAudioContext;
+      const ac=new AC();
+      const srcNode=ac.createMediaElementSource(v);
+      const dest=ac.createMediaStreamDestination();
+      srcNode.connect(dest); // capture audio (not routed to speakers during render)
+
+      const cstream=canvas.captureStream(30);
+      const mixed=new MediaStream([...cstream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
+      const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']
+        .find(t=>MediaRecorder.isTypeSupported(t))||'';
+      const rec=new MediaRecorder(mixed, mime?{mimeType:mime}:undefined);
+      const out=[]; rec.ondataavailable=e=>{ if(e.data.size) out.push(e.data); };
+      const done=new Promise(r=>{ rec.onstop=r; });
+
+      let drawing=true;
+      (function draw(){ if(!drawing) return; ctx.drawImage(v,0,0,w,h); requestAnimationFrame(draw); })();
+      rec.start();
+      await ac.resume();
+
+      for(const [s,e] of keep){
+        v.currentTime=s;
+        await new Promise(r=>{ v.onseeked=r; });
+        await v.play();
+        await new Promise(res=>{
+          const tick=()=>{ if(v.currentTime>=e-0.03||v.ended){ v.pause(); res(); }
+            else requestAnimationFrame(tick); };
+          tick();
+        });
+      }
+      drawing=false;
+      rec.stop();
+      await done;
+      ac.close();
+      const outBlob=new Blob(out,{type:out[0]?.type||'video/webm'});
+      download(outBlob,'cutroom-edit.webm');
+      setStatus('Exported edited video ('+keep.length+' clip'+(keep.length>1?'s':'')+' stitched).');
+    }catch(err){
+      setStatus('Export failed: '+err.message+'. You can still download Raw.','err');
+    }finally{
+      exporting=false; btnExport.disabled=false;
+    }
+  }
+
+  btnClearCuts.addEventListener('click',()=>{
+    segments.forEach(s=>s.deleted=false); renderSegments(); renderTimeline();
+  });
+
+  // ---------- wire up ----------
+  btnRec.addEventListener('click',startRecording);
+  btnStop.addEventListener('click',stopRecording);
+
+  // capability check on load
+  if(!SR) setStatus('Live transcription needs Chrome or Edge. Recording still works elsewhere; transcript will be empty.','warn');
+  else setStatus('Ready. Click Record to begin.');
+})();
+</script>
+</body>
+</html>
